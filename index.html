@@ -251,8 +251,40 @@ async function search() {
   };
   if (keyword) params.keyword = keyword;
 
+  // Model "data" tidak bisa di-list langsung — butuh var ID dulu
+  if (currentModel === 'data') {
+    status.textContent = '';
+    resultsEl.innerHTML = `
+      <div style="padding:40px;text-align:center">
+        <div style="font-size:40px;margin-bottom:12px">📊</div>
+        <h3 style="margin:0 0 12px">Data Dinamis</h3>
+        <p style="color:#555;max-width:480px;margin:0 auto 14px;line-height:1.5">
+          Endpoint ini butuh <b>Variable ID</b> spesifik — tidak bisa di-list dengan pencarian biasa.
+        </p>
+        <p style="color:#555;max-width:480px;margin:0 auto 18px;line-height:1.5">
+          Cara pakai:
+        </p>
+        <ol style="text-align:left;max-width:420px;margin:0 auto;color:#333;line-height:1.8">
+          <li>Klik menu <b>Variable</b> di sidebar kiri</li>
+          <li>Pilih <b>Wilayah</b> yang diinginkan (dropdown atas)</li>
+          <li>Cari variabel yang diinginkan (mis. "kemiskinan", "inflasi")</li>
+          <li>Klik tombol <b>📈 Tampilkan Data</b> di baris variabel tersebut</li>
+        </ol>
+        <div style="margin-top:24px">
+          <button class="btn-small" onclick="currentModel='var';currentPage=1;buildNav();updateHint();search()">
+            → Buka Menu Variable
+          </button>
+        </div>
+      </div>`;
+    return;
+  }
+
   try {
     const r = await api('list', params);
+    if (!r) {
+      status.innerHTML = `<span style="color:#c00">❌ Response kosong dari server</span>`;
+      return;
+    }
     if (r.status !== 'OK' && r.status !== 'ok') {
       status.innerHTML = `<span style="color:#c00">❌ ${esc(r.status || 'error')} — ${esc(JSON.stringify(r).slice(0,200))}</span>`;
       return;
