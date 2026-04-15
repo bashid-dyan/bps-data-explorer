@@ -389,8 +389,8 @@ async function viewData(varId) {
     const r = await api('list', {model:'data', domain, var:varId, lang:'ind'});
 
     // Handle BPS error / data tidak tersedia
-    if (!r || r.status === 'Error' || r['data-availability'] === 'not-available') {
-      const bpsMsg = (r && (r.message || r['data-availability'])) || 'Data tidak tersedia';
+    if (!r || r.status === 'Error' || r['data-availability'] === 'not-available' || !r.datacontent) {
+      const bpsMsg = (r && (r.message || r['data-availability'] || r.status)) || 'Data tidak tersedia';
       openModal(`
         <h3>📭 Data tidak tersedia</h3>
         <p style="color:#555">Variabel <b>#${esc(varId)}</b> tidak tersedia untuk wilayah <b>${esc(domain)}</b>.</p>
@@ -403,6 +403,10 @@ async function viewData(varId) {
             <li>Variabel ini belum dipublikasi oleh BPS daerah yang kamu pilih</li>
           </ul>
         </div>
+        <details style="margin-top:14px;font-size:12px;color:#888">
+          <summary style="cursor:pointer">Raw response (untuk debugging)</summary>
+          <pre style="max-height:300px">${esc(JSON.stringify(r, null, 2))}</pre>
+        </details>
       `);
       return;
     }

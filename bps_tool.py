@@ -95,8 +95,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return
         qs = urllib.parse.parse_qs(parsed.query, keep_blank_values=False)
         params = {k: v[0] for k, v in qs.items() if v and v[0] != ""}
-        params["key"] = API_KEY
-        url = f"{BASE}/{endpoint}?{urllib.parse.urlencode(params)}"
+        # Build canonical BPS path-based URL:
+        # /v1/api/{endpoint}/{key1}/{val1}/.../key/{API_KEY}/
+        path_parts = [endpoint]
+        for k, v in params.items():
+            path_parts.append(urllib.parse.quote(str(k), safe=""))
+            path_parts.append(urllib.parse.quote(str(v), safe=""))
+        path_parts.append("key")
+        path_parts.append(API_KEY)
+        url = f"{BASE}/" + "/".join(path_parts) + "/"
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "bps-tool/1.0"})
             with urllib.request.urlopen(req, timeout=30) as r:
