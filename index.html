@@ -387,19 +387,93 @@ async function viewData(varId) {
   const domain = document.getElementById('domain').value;
   try {
     const r = await api('list', {model:'data', domain, var:varId, lang:'ind'});
-    const content = r.datacontent || {};
-    const rows = Object.entries(content).sort();
-    let html = `<h3>Data Variabel #${esc(varId)} · Wilayah ${esc(domain)}</h3>`;
-    html += `<p style="color:#666;font-size:13px">Total ${rows.length} titik data. Kolom "Kode" berisi gabungan ID turunan · tahun · periode.</p>`;
-    if (!rows.length) html += '<p>Tidak ada data.</p>';
-    else {
-      html += '<table><thead><tr><th>Kode</th><th style="text-align:right">Nilai</th></tr></thead><tbody>';
-      rows.forEach(([k,v]) => { html += `<tr><td>${esc(k)}</td><td style="text-align:right">${esc(v)}</td></tr>`; });
-      html += '</tbody></table>';
+
+    // Handle BPS error / data tidak tersedia
+    if (!r || r.status === 'Error' || r['data-availability'] === 'not-available') {
+      const bpsMsg = (r && (r.message || r['data-availability'])) || 'Data tidak tersedia';
+      openModal(`
+        <h3>📭 Data tidak tersedia</h3>
+        <p style="color:#555">Variabel <b>#${esc(varId)}</b> tidak tersedia untuk wilayah <b>${esc(domain)}</b>.</p>
+        <p style="color:#888;font-size:13px">Pesan API: <code>${esc(bpsMsg)}</code></p>
+        <div style="background:#fff8e6;border:1px solid #ffd966;padding:12px;border-radius:6px;margin-top:14px">
+          <p style="margin:0 0 6px"><b>💡 Kemungkinan besar karena:</b></p>
+          <ul style="margin:0;padding-left:20px;color:#444;font-size:13px;line-height:1.6">
+            <li>Variabel ini hanya ada di level <b>Nasional</b> → ganti wilayah ke <b>0000 · Indonesia (Pusat)</b></li>
+            <li>Variabel ini hanya ada di level <b>Provinsi</b> → pilih kode provinsi (1100, 3100, dst) — bukan kab/kota</li>
+            <li>Variabel ini belum dipublikasi oleh BPS daerah yang kamu pilih</li>
+          </ul>
+        </div>
+      `);
+      return;
     }
+
+    // Build lookup dari metadata response
+    const lookupFrom = (arr, keyField='val', labelField='label') => {
+      const m = {};
+      (arr || []).forEach(x => { if (x && x[keyField] != null) m[String(x[keyField])] = x[labelField] || ''; });
+      return m;
+    };
+    const vervar  = lookupFrom(r.vervar);
+    const tahun   = lookupFrom(r.tahun);
+    const turvar  = lookupFrom(r.turvar);
+    const turtahun= lookupFrom(r.turtahun);
+    const varMeta = (r.var && r.var[0]) || {};
+    const satuan  = (r.satuan && r.satuan[0] && r.satuan[0].label) || varMeta.unit || '';
+
+    // Parse key "vervarId_turvarId_varId_tahunIdTurtahunId"
+    const decode = (key) => {
+      const parts = key.split('_');
+      const ver = parts[0], tvar = parts[1], vr = parts[2], last = parts.slice(3).join('_');
+      // last = tahunId + turtahunId (turtahun 2 digit di akhir biasanya)
+      let th = last, tt = '';
+      if (last && last.length > 3) { th = last.slice(0,-3); tt = last.slice(-3); }
+      return {
+        wilayah: vervar[ver] || ver,
+        turunan: turvar[tvar] || '',
+        tahun: tahun[th] || th,
+        periode: turtahun[tt] || ''
+      };
+    };
+
+    const content = r.datacontent || {};
+    const rows = Object.entries(content);
+
+    let html = `<h3>${esc(varMeta.label || 'Variabel #' + varId)}</h3>`;
+    html += `<p style="color:#666;font-size:13px;margin-top:4px">`;
+    html += `Wilayah: <b>${esc(domain)}</b> · Satuan: <b>${esc(satuan || '-')}</b> · Total titik data: <b>${rows.length}</b>`;
+    html += `</p>`;
+
+    if (!rows.length) {
+      html += '<p style="color:#888;text-align:center;padding:24px">Tidak ada data.</p>';
+    } else {
+      html += '<div style="overflow-x:auto"><table>';
+      html += '<thead><tr><th>Kategori</th><th>Turunan</th><th>Tahun</th><th>Periode</th><th style="text-align:right">Nilai</th></tr></thead><tbody>';
+      rows.forEach(([k,v]) => {
+        const d = decode(k);
+        html += `<tr>
+          <td>${esc(d.wilayah)}</td>
+          <td>${esc(d.turunan)}</td>
+          <td>${esc(d.tahun)}</td>
+          <td>${esc(d.periode)}</td>
+          <td style="text-align:right"><b>${esc(v)}</b></td>
+        </tr>`;
+      });
+      html += '</tbody></table></div>';
+      html += `<details style="margin-top:14px;font-size:12px;color:#888"><summary style="cursor:pointer">Raw JSON response</summary><pre style="max-height:300px">${esc(JSON.stringify(r, null, 2))}</pre></details>`;
+    }
+
     openModal(html);
   } catch (e) {
-    openModal(`<h3>Error</h3><pre>${esc(e.message)}</pre>`);
+    openModal(`
+      <h3>❌ Gagal ambil data</h3>
+      <pre>${esc(e.message)}</pre>
+      <p style="color:#666;font-size:13px;margin-top:10px">Coba:</p>
+      <ul style="color:#666;font-size:13px;line-height:1.6">
+        <li>Ganti wilayah ke <b>0000 · Indonesia (Pusat)</b></li>
+        <li>Pilih variabel lain</li>
+        <li>Refresh halaman (Ctrl+Shift+R)</li>
+      </ul>
+    `);
   }
 }
 
