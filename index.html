@@ -221,11 +221,6 @@
   }
   @keyframes spin{to{transform:rotate(360deg)}}
 
-  /* STATIC TABLE from BPS - override inline styles biar readable */
-  .stat-table-wrap table{border-collapse:collapse !important; font-size:12px !important; width:auto !important; min-width:100%}
-  .stat-table-wrap td{border:1px solid #e2e8f0 !important; padding:6px 10px !important; min-width:60px}
-  .stat-table-wrap td[class*="xl"]{background:inherit}
-  .stat-table-wrap font{font-size:inherit !important}
 </style>
 </head>
 <body>
@@ -571,7 +566,7 @@ async function viewItem(model, id) {
     }
     const d = r.data || r;
 
-    // Khusus tabel statis: render HTML tabelnya langsung
+    // Khusus tabel statis: render HTML tabelnya di iframe (isolasi CSS)
     if (model === 'statictable') {
       const tableHtml = decodeHtmlEntities(d.table || '');
       const related = Array.isArray(d.related) ? d.related : [];
@@ -584,12 +579,27 @@ async function viewItem(model, id) {
       html += `</div>`;
 
       if (d.excel) {
-        html += `<div style="margin-bottom:16px"><a href="${esc(d.excel)}" target="_blank" class="btn-small" style="padding:8px 16px;font-size:13px">⬇️ Download Excel</a></div>`;
+        html += `<div style="margin-bottom:16px;padding:10px 14px;background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;font-size:13px;color:#78350f">
+          ⚠️ <b>Download Excel butuh session di web BPS.</b> Klik tombol di bawah untuk buka URL → login/lanjut di tab baru (kalau belum login, akan dialihkan).<br>
+          <a href="${esc(d.excel)}" target="_blank" class="btn-small" style="margin-top:8px;padding:7px 14px;font-size:13px;display:inline-block">🔗 Buka Link Download di Tab Baru</a>
+        </div>`;
       }
 
-      html += `<div class="stat-table-wrap" style="overflow-x:auto;border:1px solid var(--border);border-radius:8px;padding:4px;background:#fff">`;
-      html += tableHtml || '<p style="color:var(--muted);text-align:center;padding:20px">Tabel kosong.</p>';
-      html += `</div>`;
+      // Render tabel dalam iframe sandbox biar CSS Excel inline ter-isolasi
+      const iframeDoc = `
+        <!DOCTYPE html><html><head><meta charset="UTF-8">
+        <style>
+          body{margin:0;padding:8px;font-family:-apple-system,Segoe UI,Roboto,sans-serif;font-size:13px;color:#222;background:#fff}
+          table{border-collapse:collapse !important;width:auto;min-width:100%}
+          td,th{border:1px solid #cbd5e1 !important;padding:6px 10px !important;vertical-align:middle !important;white-space:nowrap}
+          tr:first-child td{background:#f1f5f9 !important}
+        </style></head><body>${tableHtml}</body></html>
+      `;
+      const iframeSrcdoc = iframeDoc.replace(/"/g, '&quot;');
+      html += `<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;background:#fff">
+        <iframe srcdoc="${iframeSrcdoc}" style="width:100%;height:500px;border:0;display:block" sandbox="allow-same-origin"></iframe>
+      </div>
+      <p style="font-size:12px;color:var(--muted);margin-top:8px">💡 Tabel di-scroll horizontal/vertikal di dalam frame. Untuk full view, download Excel-nya.</p>`;
 
       if (related.length) {
         html += `<div style="margin-top:20px"><h4 style="font-size:14px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:0 0 10px">🔗 Tabel Terkait</h4>`;
