@@ -516,7 +516,7 @@ function renderByModel(model, items) {
     sdgs: [
       {label:'Judul', render:r=>esc(r.title)},
       {label:'Goal/Target', render:r=>esc(r.goal || r.target || '')},
-      {label:'Raw', render:r=>`<button class="btn-small" onclick='showRaw(${JSON.stringify(JSON.stringify(r))})'>Detail</button>`},
+      {label:'Aksi', render:r=>`<button class="btn-small" onclick='showDetail(${JSON.stringify(JSON.stringify(r))}, "sdgs")'>Detail</button>`},
     ],
     subject: [
       {label:'ID', render:r=>esc(r.subj_id || r.id)},
@@ -733,8 +733,75 @@ async function viewData(varId) {
   }
 }
 
-function showRaw(json) {
-  openModal(`<h3>Raw</h3><pre>${esc(JSON.stringify(JSON.parse(json), null, 2))}</pre>`);
+function showDetail(json, modelHint) {
+  const d = JSON.parse(json);
+  const labels = {
+    sdgs_id:'ID SDGs', sdg_id:'ID SDGs', target_id:'ID Target', indicator_id:'ID Indikator',
+    title:'Judul', name:'Nama', goal:'Goal', target:'Target', indicator:'Indikator',
+    description:'Deskripsi', desc:'Deskripsi', definition:'Definisi',
+    unit:'Satuan', value:'Nilai', source:'Sumber', updt_date:'Tanggal Update',
+    cr_date:'Tanggal Dibuat', rl_date:'Tanggal Rilis', year:'Tahun',
+    category:'Kategori', subj:'Subject', sub_name:'Subject',
+  };
+  const pretty = k => labels[k] || k.replace(/_/g,' ').replace(/\b\w/g, c=>c.toUpperCase());
+
+  const title = d.title || d.name || d.indicator || 'Detail';
+  const icon  = modelHint === 'sdgs' ? '🌍' : 'ℹ️';
+
+  let html = `<h3>${icon} ${esc(title)}</h3>`;
+
+  // Badge row kalau ada goal/target/indicator
+  const badges = [];
+  if (d.goal)       badges.push(`<span class="pill">Goal: ${esc(d.goal)}</span>`);
+  if (d.target)     badges.push(`<span class="pill muted">Target: ${esc(d.target)}</span>`);
+  if (d.indicator)  badges.push(`<span class="pill muted">Indikator: ${esc(d.indicator)}</span>`);
+  if (d.unit)       badges.push(`<span class="pill muted">Satuan: ${esc(d.unit)}</span>`);
+  if (badges.length) html += `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">${badges.join('')}</div>`;
+
+  // Deskripsi/definisi panjang → render sebagai blok
+  const longFields = ['description','desc','definition'];
+  longFields.forEach(f => {
+    if (d[f]) {
+      html += `<div style="background:#f8fafc;border-left:3px solid var(--accent);padding:12px 16px;border-radius:6px;margin-bottom:14px;font-size:14px;line-height:1.6;color:#334155">${esc(d[f])}</div>`;
+    }
+  });
+
+  // Key-value grid untuk sisanya
+  const skip = new Set(['title','name','goal','target','indicator','unit','description','desc','definition']);
+  const entries = Object.entries(d).filter(([k,v]) =>
+    !skip.has(k) && v != null && v !== '' &&
+    typeof v !== 'object'
+  );
+  if (entries.length) {
+    html += `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:14px">`;
+    entries.forEach(([k,v]) => {
+      const val = String(v).slice(0, 400);
+      html += `<div style="background:#f8fafc;padding:10px 14px;border-radius:8px;border:1px solid var(--border)">
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700">${esc(pretty(k))}</div>
+        <div style="font-weight:500;margin-top:3px;word-break:break-word">${esc(val)}</div>
+      </div>`;
+    });
+    html += `</div>`;
+  }
+
+  // Array fields (nested list)
+  Object.entries(d).forEach(([k,v]) => {
+    if (Array.isArray(v) && v.length) {
+      html += `<h4 style="font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 8px">${esc(pretty(k))} (${v.length})</h4>`;
+      html += `<ul style="padding-left:18px;font-size:13px;line-height:1.7;margin:0">`;
+      v.slice(0,20).forEach(item => {
+        const label = (typeof item === 'object') ? (item.title || item.name || JSON.stringify(item).slice(0,100)) : String(item);
+        html += `<li>${esc(label)}</li>`;
+      });
+      if (v.length > 20) html += `<li style="color:var(--muted)">… dan ${v.length-20} lagi</li>`;
+      html += `</ul>`;
+    }
+  });
+
+  // Raw JSON expandable
+  html += `<details style="margin-top:16px;font-size:12px;color:var(--muted)"><summary style="cursor:pointer">Raw JSON</summary><pre style="max-height:300px">${esc(JSON.stringify(d, null, 2))}</pre></details>`;
+
+  openModal(html);
 }
 
 function openModal(html) {
