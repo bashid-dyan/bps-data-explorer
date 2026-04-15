@@ -561,6 +561,14 @@ async function viewItem(model, id) {
   const domain = document.getElementById('domain').value;
   try {
     const r = await api('view', {model, domain, id, lang:'ind'});
+    if (!r) {
+      openModal(`
+        <h3>📭 Tidak ada detail</h3>
+        <p style="color:var(--muted)">Endpoint <code>view</code> untuk ${esc(model)} #${esc(id)} tidak mengembalikan data.</p>
+        <p style="color:var(--muted);font-size:13px">Coba ganti wilayah ke <b>0000 · Indonesia (Pusat)</b> — banyak tabel hanya tersedia di domain pusat.</p>
+      `);
+      return;
+    }
     const d = r.data || r;
 
     // Khusus tabel statis: render HTML tabelnya langsung
