@@ -1,0 +1,2 @@
+# Tool ini hanya memakai Python standard library.
+# File ini sengaja kosong supaya Railway/Nixpacks tetap mendeteksi ini sebagai proyek Python.

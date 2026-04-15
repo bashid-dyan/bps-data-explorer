@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BPS Data Explorer</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;margin:0;background:#f5f6f8;color:#222}
+  header{background:#1a5490;color:#fff;padding:14px 20px;display:flex;align-items:center;gap:12px;box-shadow:0 1px 3px rgba(0,0,0,.15)}
+  header h1{margin:0;font-size:18px;font-weight:600}
+  header .sub{opacity:.7;font-size:13px}
+  .layout{display:grid;grid-template-columns:240px 1fr;min-height:calc(100vh - 52px)}
+  nav{background:#fff;border-right:1px solid #e1e4e8;padding:12px 0}
+  nav .group{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#888;padding:10px 16px 4px}
+  nav button{display:block;width:100%;text-align:left;padding:9px 16px;border:0;background:transparent;cursor:pointer;font-size:14px;color:#333;border-left:3px solid transparent}
+  nav button:hover{background:#f5f6f8}
+  nav button.active{background:#eaf2fb;border-left-color:#1a5490;color:#1a5490;font-weight:600}
+  main{padding:20px;overflow:auto}
+  .controls{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;align-items:center}
+  .controls label{font-size:13px;color:#555;display:flex;align-items:center;gap:6px}
+  .controls select,.controls input{padding:8px 10px;border:1px solid #d1d5da;border-radius:6px;font-size:14px;background:#fff}
+  .controls input{min-width:240px}
+  .controls button{padding:8px 16px;background:#1a5490;color:#fff;border:0;border-radius:6px;cursor:pointer;font-weight:600}
+  .controls button:hover{background:#154072}
+  .hint{font-size:12px;color:#888;margin-bottom:12px}
+  .status{font-size:13px;color:#555;margin:8px 0 12px;min-height:20px}
+  .results{background:#fff;border:1px solid #e1e4e8;border-radius:8px;overflow:hidden}
+  .results table{width:100%;border-collapse:collapse}
+  .results th,.results td{padding:10px 14px;text-align:left;border-bottom:1px solid #eee;font-size:14px;vertical-align:top}
+  .results th{background:#f8fafc;font-weight:600;color:#555;font-size:13px;position:sticky;top:0}
+  .results tr:last-child td{border-bottom:0}
+  .results tr:hover td{background:#fafbfc}
+  .pager{display:flex;gap:10px;align-items:center;padding:10px;border-top:1px solid #e1e4e8;justify-content:center;background:#fafbfc}
+  .pager button{padding:6px 12px;border:1px solid #d1d5da;background:#fff;border-radius:6px;cursor:pointer;font-size:13px}
+  .pager button:disabled{opacity:.5;cursor:not-allowed}
+  .pill{display:inline-block;padding:2px 8px;border-radius:10px;font-size:12px;background:#eaf2fb;color:#1a5490;font-weight:600}
+  a{color:#1a5490;text-decoration:none}
+  a:hover{text-decoration:underline}
+  .empty{padding:32px;text-align:center;color:#888}
+  .modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100;align-items:center;justify-content:center;padding:20px}
+  .modal-bg.show{display:flex}
+  .modal{background:#fff;border-radius:10px;max-width:880px;width:100%;max-height:85vh;overflow:auto;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+  .modal h3{margin:0 0 12px}
+  .modal pre{background:#f8fafc;padding:12px;border-radius:6px;overflow:auto;font-size:12px;white-space:pre-wrap;word-break:break-word}
+  .modal table{width:100%;border-collapse:collapse;font-size:13px}
+  .modal table th,.modal table td{padding:6px 10px;border-bottom:1px solid #eee;text-align:left}
+  .modal table th{background:#f8fafc}
+  .close-btn{float:right;border:0;background:#eee;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:13px}
+  .close-btn:hover{background:#ddd}
+  .truncate{max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .btn-small{padding:4px 10px;font-size:12px;background:#eef3f9;border:1px solid #cbd8e6;border-radius:5px;cursor:pointer;color:#1a5490}
+  .btn-small:hover{background:#dde8f4}
+</style>
+</head>
+<body>
+<header>
+  <h1>📊 BPS Data Explorer</h1>
+  <span class="sub">webapi.bps.go.id</span>
+</header>
+<div class="layout">
+  <nav id="nav"></nav>
+  <main>
+    <div class="controls">
+      <label>Wilayah:
+        <select id="domain"><option value="0000">Indonesia (Pusat)</option></select>
+      </label>
+      <input id="keyword" placeholder="Cari keyword (opsional)…">
+      <button id="searchBtn">🔍 Cari</button>
+    </div>
+    <div class="hint" id="hint"></div>
+    <div class="status" id="status"></div>
+    <div class="results" id="results"></div>
+  </main>
+</div>
+
+<div class="modal-bg" id="modalBg">
+  <div class="modal">
+    <button class="close-btn" onclick="closeModal()">Tutup ✕</button>
+    <div id="modalContent"></div>
+  </div>
+</div>
+
+<script>
+const MODELS = [
+  {group:'Data Statistik', items:[
+    {id:'data',        name:'Data Dinamis',    hint:'Angka statistik time-series (perlu pilih variabel)'},
+    {id:'var',         name:'Variable',         hint:'Variabel/indikator — dari sini dapatkan data angkanya'},
+    {id:'subject',     name:'Subject',          hint:'Kategori besar statistik'},
+    {id:'statictable', name:'Tabel Statis',     hint:'Tabel siap tampil'},
+    {id:'indicators',  name:'Indikator Strategis', hint:'Indikator utama terbaru'},
+  ]},
+  {group:'Konten', items:[
+    {id:'publication', name:'Publikasi',        hint:'Publikasi BPS (PDF)'},
+    {id:'pressrelease',name:'Siaran Pers',      hint:'Press release'},
+    {id:'infographic', name:'Infografis',       hint:'Gambar infografis'},
+  ]},
+  {group:'Lainnya', items:[
+    {id:'sdgs',        name:'SDGs',             hint:'Sustainable Development Goals'},
+    {id:'glosarium',   name:'Glosarium',        hint:'Definisi istilah statistik'},
+  ]},
+];
+
+let currentModel = 'publication';
+let currentPage = 1;
+
+async function api(endpoint, params) {
+  const qs = new URLSearchParams(params);
+  const res = await fetch(`/api/${endpoint}?${qs}`, {
+    headers: { 'X-App-Password': localStorage.getItem('bps_pwd') || '' }
+  });
+  if (res.status === 401) { showLogin(); throw new Error('Butuh login'); }
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+async function checkAuth() {
+  const pwd = localStorage.getItem('bps_pwd') || '';
+  const r = await fetch('/auth/check', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({password: pwd})
+  });
+  const data = await r.json();
+  if (!data.auth_required) return true;
+  if (r.ok && data.ok) return true;
+  showLogin();
+  return false;
+}
+
+function showLogin() {
+  const html = `
+    <h3>🔒 Login</h3>
+    <p style="color:#666;font-size:13px">Tool ini dilindungi password.</p>
+    <input id="pwdInput" type="password" placeholder="Password"
+      style="width:100%;padding:10px;border:1px solid #d1d5da;border-radius:6px;font-size:14px;margin-bottom:10px"
+      onkeyup="if(event.key==='Enter')submitLogin()">
+    <button onclick="submitLogin()"
+      style="padding:10px 18px;background:#1a5490;color:#fff;border:0;border-radius:6px;cursor:pointer;font-weight:600;width:100%">
+      Masuk
+    </button>
+    <div id="loginErr" style="color:#c00;font-size:13px;margin-top:10px"></div>
+  `;
+  openModal(html);
+  setTimeout(()=>document.getElementById('pwdInput')?.focus(), 50);
+}
+
+async function submitLogin() {
+  const pwd = document.getElementById('pwdInput').value;
+  const r = await fetch('/auth/check', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({password: pwd})
+  });
+  if (r.ok) {
+    localStorage.setItem('bps_pwd', pwd);
+    closeModal();
+    search();
+  } else {
+    document.getElementById('loginErr').textContent = '❌ Password salah';
+  }
+}
+
+function flatModel(id){
+  for (const g of MODELS) for (const m of g.items) if (m.id===id) return m;
+  return null;
+}
+
+function buildNav() {
+  const nav = document.getElementById('nav');
+  nav.innerHTML = '';
+  MODELS.forEach(g => {
+    const h = document.createElement('div');
+    h.className = 'group';
+    h.textContent = g.group;
+    nav.appendChild(h);
+    g.items.forEach(m => {
+      const b = document.createElement('button');
+      b.textContent = m.name;
+      b.title = m.hint;
+      if (m.id === currentModel) b.classList.add('active');
+      b.onclick = () => { currentModel = m.id; currentPage=1; buildNav(); updateHint(); search(); };
+      nav.appendChild(b);
+    });
+  });
+}
+
+function updateHint() {
+  const m = flatModel(currentModel);
+  document.getElementById('hint').textContent = m ? `💡 ${m.hint}` : '';
+}
+
+async function loadDomains() {
+  const sel = document.getElementById('domain');
+  try {
+    const r = await api('domain', {type:'all'});
+    if (!r.data) return;
+    const list = [];
+    (Array.isArray(r.data)?r.data:[]).forEach(x => {
+      if (Array.isArray(x)) x.forEach(d=>list.push(d));
+      else if (x && x.domain_id) list.push(x);
+    });
+    list.sort((a,b)=>String(a.domain_id).localeCompare(String(b.domain_id)));
+    list.forEach(d => {
+      if (!d.domain_id || d.domain_id==='0000') return;
+      const o = document.createElement('option');
+      o.value = d.domain_id;
+      o.textContent = `${d.domain_id} · ${d.domain_name}`;
+      sel.appendChild(o);
+    });
+  } catch (e) {
+    console.warn('load domains:', e);
+  }
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function renderTable(rows, cols) {
+  if (!rows || !rows.length) return '<div class="empty">Tidak ada data.</div>';
+  let h = '<table><thead><tr>';
+  cols.forEach(c => h += `<th>${c.label}</th>`);
+  h += '</tr></thead><tbody>';
+  rows.forEach(r => {
+    h += '<tr>';
+    cols.forEach(c => {
+      const v = c.render ? c.render(r) : (r[c.key] ?? '');
+      h += `<td>${v}</td>`;
+    });
+    h += '</tr>';
+  });
+  h += '</tbody></table>';
+  return h;
+}
+
+async function search() {
+  const status = document.getElementById('status');
+  const resultsEl = document.getElementById('results');
+  status.textContent = 'Memuat…';
+  resultsEl.innerHTML = '';
+
+  const domain = document.getElementById('domain').value;
+  const keyword = document.getElementById('keyword').value.trim();
+
+  const params = {
+    model: currentModel,
+    domain: domain,
+    page: currentPage,
+    lang: 'ind'
+  };
+  if (keyword) params.keyword = keyword;
+
+  try {
+    const r = await api('list', params);
+    if (r.status !== 'OK' && r.status !== 'ok') {
+      status.innerHTML = `<span style="color:#c00">❌ ${esc(r.status || 'error')} — ${esc(JSON.stringify(r).slice(0,200))}</span>`;
+      return;
+    }
+    const arr = Array.isArray(r.data) ? r.data : [];
+    const pagination = arr[0] && typeof arr[0]==='object' && !Array.isArray(arr[0]) ? arr[0] : {};
+    const items = (arr[1] || []);
+    status.innerHTML = `<span class="pill">${esc(currentModel)}</span> &nbsp; Wilayah <b>${esc(domain)}</b> &nbsp; · &nbsp; Hal. ${pagination.page||1}/${pagination.pages||1} &nbsp; · &nbsp; Total <b>${pagination.total ?? items.length}</b>`;
+    resultsEl.innerHTML = renderByModel(currentModel, items) + renderPager(pagination);
+  } catch (e) {
+    status.innerHTML = `<span style="color:#c00">❌ ${esc(e.message)}</span>`;
+  }
+}
+
+function renderPager(p) {
+  if (!p || !p.pages || p.pages<=1) return '';
+  return `<div class="pager">
+    <button ${p.page<=1?'disabled':''} onclick="currentPage=Math.max(1,currentPage-1); search()">‹ Prev</button>
+    <span>Halaman ${p.page} / ${p.pages}</span>
+    <button ${p.page>=p.pages?'disabled':''} onclick="currentPage++; search()">Next ›</button>
+  </div>`;
+}
+
+function renderByModel(model, items) {
+  if (!items.length) return '<div class="empty">Tidak ada hasil.</div>';
+  const tables = {
+    publication: [
+      {label:'Judul', render:r=>`<div class="truncate" title="${esc(r.title)}">${esc(r.title)}</div>`},
+      {label:'Tanggal', key:'rl_date'},
+      {label:'ISSN/ISBN', render:r=>esc(r.issn || r.isbn || '')},
+      {label:'Aksi', render:r=>r.pdf?`<a href="${esc(r.pdf)}" target="_blank">📄 PDF ↗</a>`:''},
+    ],
+    pressrelease: [
+      {label:'Judul', render:r=>`<div class="truncate" title="${esc(r.title)}">${esc(r.title)}</div>`},
+      {label:'Tanggal', key:'rl_date'},
+      {label:'Subject', render:r=>esc(r.subj || '')},
+      {label:'PDF', render:r=>r.pdf?`<a href="${esc(r.pdf)}" target="_blank">↗</a>`:''},
+    ],
+    statictable: [
+      {label:'ID', key:'table_id'},
+      {label:'Judul', render:r=>`<div class="truncate" title="${esc(r.title)}">${esc(r.title)}</div>`},
+      {label:'Subject', render:r=>esc(r.subj || '')},
+      {label:'Aksi', render:r=>`<button class="btn-small" onclick="viewItem('statictable',${r.table_id})">Lihat</button>`},
+    ],
+    indicators: [
+      {label:'Judul', render:r=>esc(r.title)},
+      {label:'Satuan', render:r=>esc(r.unit || '')},
+      {label:'Nilai terkini', render:r=>esc(r.value || r.last_value || '')},
+      {label:'Update', render:r=>esc(r.updt_date || r.rl_date || '')},
+    ],
+    infographic: [
+      {label:'Judul', render:r=>esc(r.title)},
+      {label:'Tanggal', key:'rl_date'},
+      {label:'Gambar', render:r=>r.img?`<a href="${esc(r.img)}" target="_blank">🖼 Lihat ↗</a>`:''},
+    ],
+    sdgs: [
+      {label:'Judul', render:r=>esc(r.title)},
+      {label:'Goal/Target', render:r=>esc(r.goal || r.target || '')},
+      {label:'Raw', render:r=>`<button class="btn-small" onclick='showRaw(${JSON.stringify(JSON.stringify(r))})'>Detail</button>`},
+    ],
+    subject: [
+      {label:'ID', render:r=>esc(r.subj_id || r.id)},
+      {label:'Subject', render:r=>esc(r.title)},
+    ],
+    var: [
+      {label:'Var ID', render:r=>esc(r.var_id)},
+      {label:'Nama Variabel', render:r=>`<div class="truncate" title="${esc(r.title)}">${esc(r.title)}</div>`},
+      {label:'Subject', render:r=>esc(r.sub_name || '')},
+      {label:'Aksi', render:r=>`<button class="btn-small" onclick="viewData('${r.var_id}')">📈 Tampilkan Data</button>`},
+    ],
+    glosarium: [
+      {label:'Istilah', render:r=>'<b>'+esc(r.title)+'</b>'},
+      {label:'Definisi', render:r=>esc(r.description || r.desc || '')},
+    ],
+    data: [
+      {label:'Item', render:r=>`<pre style="margin:0;white-space:pre-wrap;font-size:12px">${esc(JSON.stringify(r).slice(0,500))}</pre>`},
+    ],
+  };
+  const cols = tables[model];
+  if (cols) return renderTable(items, cols);
+  return renderTable(items, [
+    {label:'Raw', render:r=>`<pre style="margin:0;white-space:pre-wrap;font-size:12px">${esc(JSON.stringify(r).slice(0,400))}</pre>`}
+  ]);
+}
+
+async function viewItem(model, id) {
+  openModal('Memuat…');
+  const domain = document.getElementById('domain').value;
+  try {
+    const r = await api('view', {model, domain, id, lang:'ind'});
+    const d = r.data || r;
+    openModal(`<h3>Detail ${esc(model)} #${esc(id)}</h3><pre>${esc(JSON.stringify(d, null, 2))}</pre>`);
+  } catch (e) {
+    openModal(`<h3>Error</h3><pre>${esc(e.message)}</pre>`);
+  }
+}
+
+async function viewData(varId) {
+  openModal('Memuat data…');
+  const domain = document.getElementById('domain').value;
+  try {
+    const r = await api('list', {model:'data', domain, var:varId, lang:'ind'});
+    const content = r.datacontent || {};
+    const rows = Object.entries(content).sort();
+    let html = `<h3>Data Variabel #${esc(varId)} · Wilayah ${esc(domain)}</h3>`;
+    html += `<p style="color:#666;font-size:13px">Total ${rows.length} titik data. Kolom "Kode" berisi gabungan ID turunan · tahun · periode.</p>`;
+    if (!rows.length) html += '<p>Tidak ada data.</p>';
+    else {
+      html += '<table><thead><tr><th>Kode</th><th style="text-align:right">Nilai</th></tr></thead><tbody>';
+      rows.forEach(([k,v]) => { html += `<tr><td>${esc(k)}</td><td style="text-align:right">${esc(v)}</td></tr>`; });
+      html += '</tbody></table>';
+    }
+    openModal(html);
+  } catch (e) {
+    openModal(`<h3>Error</h3><pre>${esc(e.message)}</pre>`);
+  }
+}
+
+function showRaw(json) {
+  openModal(`<h3>Raw</h3><pre>${esc(JSON.stringify(JSON.parse(json), null, 2))}</pre>`);
+}
+
+function openModal(html) {
+  document.getElementById('modalContent').innerHTML = html;
+  document.getElementById('modalBg').classList.add('show');
+}
+function closeModal(){ document.getElementById('modalBg').classList.remove('show'); }
+document.getElementById('modalBg').onclick = (e) => { if (e.target.id==='modalBg') closeModal(); };
+document.addEventListener('keyup', e => { if (e.key==='Escape') closeModal(); });
+
+document.getElementById('searchBtn').onclick = () => { currentPage=1; search(); };
+document.getElementById('keyword').addEventListener('keyup', e => { if (e.key==='Enter'){currentPage=1; search();} });
+document.getElementById('domain').addEventListener('change', () => { currentPage=1; search(); });
+
+(async () => {
+  buildNav();
+  updateHint();
+  const ok = await checkAuth();
+  if (!ok) return;
+  await loadDomains();
+  search();
+})();
+</script>
+</body>
+</html>
