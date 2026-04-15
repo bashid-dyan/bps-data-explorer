@@ -220,6 +220,12 @@
     margin-right:6px; vertical-align:middle;
   }
   @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* STATIC TABLE from BPS - override inline styles biar readable */
+  .stat-table-wrap table{border-collapse:collapse !important; font-size:12px !important; width:auto !important; min-width:100%}
+  .stat-table-wrap td{border:1px solid #e2e8f0 !important; padding:6px 10px !important; min-width:60px}
+  .stat-table-wrap td[class*="xl"]{background:inherit}
+  .stat-table-wrap font{font-size:inherit !important}
 </style>
 </head>
 <body>
@@ -542,15 +548,71 @@ function renderByModel(model, items) {
   ]);
 }
 
+// Decode HTML entities (&lt; &gt; &quot; &#039; &amp; dll)
+function decodeHtmlEntities(str) {
+  if (!str) return '';
+  const txt = document.createElement('textarea');
+  txt.innerHTML = str;
+  return txt.value;
+}
+
 async function viewItem(model, id) {
-  openModal('Memuat…');
+  openModal('<div style="text-align:center;padding:30px"><span class="loading"></span> Memuat…</div>');
   const domain = document.getElementById('domain').value;
   try {
     const r = await api('view', {model, domain, id, lang:'ind'});
     const d = r.data || r;
-    openModal(`<h3>Detail ${esc(model)} #${esc(id)}</h3><pre>${esc(JSON.stringify(d, null, 2))}</pre>`);
+
+    // Khusus tabel statis: render HTML tabelnya langsung
+    if (model === 'statictable') {
+      const tableHtml = decodeHtmlEntities(d.table || '');
+      const related = Array.isArray(d.related) ? d.related : [];
+      let html = `<h3>${esc(d.title || 'Tabel Statis #' + id)}</h3>`;
+      html += `<div style="color:var(--muted);font-size:13px;margin-bottom:14px;display:flex;gap:14px;flex-wrap:wrap">`;
+      if (d.subcsa)    html += `<span>📚 <b>${esc(d.subcsa)}</b></span>`;
+      if (d.cr_date)   html += `<span>📅 Dibuat: ${esc(String(d.cr_date).slice(0,10))}</span>`;
+      if (d.updt_date) html += `<span>🔄 Update: ${esc(String(d.updt_date).slice(0,10))}</span>`;
+      if (d.size)      html += `<span>📦 ${esc(d.size)}</span>`;
+      html += `</div>`;
+
+      if (d.excel) {
+        html += `<div style="margin-bottom:16px"><a href="${esc(d.excel)}" target="_blank" class="btn-small" style="padding:8px 16px;font-size:13px">⬇️ Download Excel</a></div>`;
+      }
+
+      html += `<div class="stat-table-wrap" style="overflow-x:auto;border:1px solid var(--border);border-radius:8px;padding:4px;background:#fff">`;
+      html += tableHtml || '<p style="color:var(--muted);text-align:center;padding:20px">Tabel kosong.</p>';
+      html += `</div>`;
+
+      if (related.length) {
+        html += `<div style="margin-top:20px"><h4 style="font-size:14px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:0 0 10px">🔗 Tabel Terkait</h4>`;
+        html += `<ul style="padding-left:18px;line-height:1.7;font-size:13px">`;
+        related.forEach(rel => {
+          const link = rel.link ? `https://www.bps.go.id${rel.link}` : '#';
+          html += `<li><a href="${esc(link)}" target="_blank">${esc(rel.title)}</a></li>`;
+        });
+        html += `</ul></div>`;
+      }
+      openModal(html);
+      return;
+    }
+
+    // Default fallback untuk model lain: kartu metadata + raw
+    let html = `<h3>Detail ${esc(model)} #${esc(id)}</h3>`;
+    if (d.title) html += `<p style="font-size:16px;font-weight:600;color:var(--ink)">${esc(d.title)}</p>`;
+    html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:14px 0;font-size:13px">`;
+    Object.entries(d).forEach(([k,v]) => {
+      if (['title','table','datacontent','related','excel'].includes(k)) return;
+      if (v == null || (typeof v === 'object' && !Array.isArray(v))) return;
+      const val = Array.isArray(v) ? `${v.length} item` : String(v).slice(0,200);
+      html += `<div><div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">${esc(k)}</div><div style="font-weight:500">${esc(val)}</div></div>`;
+    });
+    html += `</div>`;
+    if (d.pdf)   html += `<p><a href="${esc(d.pdf)}" target="_blank" class="btn-small">📄 Buka PDF</a></p>`;
+    if (d.excel) html += `<p><a href="${esc(d.excel)}" target="_blank" class="btn-small">⬇️ Download Excel</a></p>`;
+    html += `<details style="margin-top:14px;font-size:12px;color:var(--muted)"><summary style="cursor:pointer">Raw JSON</summary><pre style="max-height:300px">${esc(JSON.stringify(d, null, 2))}</pre></details>`;
+    openModal(html);
   } catch (e) {
-    openModal(`<h3>Error</h3><pre>${esc(e.message)}</pre>`);
+    openModal(`<h3>❌ Error</h3><pre>${esc(e.message)}</pre>`);
   }
 }
 
